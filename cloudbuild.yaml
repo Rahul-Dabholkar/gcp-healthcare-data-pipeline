@@ -1,0 +1,24 @@
+steps:
+  # Step 1: Install Python dependencies
+  - name: 'python'
+    entrypoint: pip
+    args: ["install", "-r", "requirements.txt", "--user"]
+
+  # Step 2: Run the script to upload DAGs and Data to Composer bucket
+  - name: 'python'
+    entrypoint: python
+    args:
+      - "infra/scripts/add_dags_to_composer.py"
+      - "--dags_directory=${_DAGS_DIRECTORY}"
+      - "--dags_bucket=${_DAGS_BUCKET}"
+      - "--data_directory=${_DATA_DIRECTORY}"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _DAGS_DIRECTORY: "dags/"
+  _DAGS_BUCKET: "us-central1-gcp-healthcare--9b63318a-bucket"
+  _DATA_DIRECTORY: "data/"
+
+
