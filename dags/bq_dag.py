@@ -1,4 +1,3 @@
-import airflow
 from airflow import DAG
 from datetime import timedelta, datetime
 from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
@@ -18,14 +17,14 @@ def read_sql_file(file_path):
 # Default arguments
 ARGS = {
     "owner": "RAHUL DEV",
-    "start_date": datetime(2025, 1, 1),  # must be a valid date
+    "start_date": None,
     "depends_on_past": False,
     "email_on_failure": False,
     "email_on_retry": False,
     "email": ["rahultbeast@gmail.com"],
     "email_on_success": False,
     "retries": 1,
-    "retry_delay": timedelta(minutes=5)
+    "retry_delay": timedelta(minutes=5),
 }
 
 # Define the DAG
@@ -43,7 +42,7 @@ with DAG(
         task_id="bronze_tables",
         configuration={
             "query": {
-                "query": read_sql_file(SQL_FILE_PATH_1),  # Read at runtime
+                "query": "{% include '/home/airflow/gcs/pipelines/loaders/bronze.sql' %}",
                 "useLegacySql": False,
                 "priority": "BATCH",
             }
@@ -55,7 +54,7 @@ with DAG(
         task_id="silver_tables",
         configuration={
             "query": {
-                "query": read_sql_file(SQL_FILE_PATH_2),
+                "query": "{% include '/home/airflow/gcs/pipelines/transforms/silver.sql' %}",
                 "useLegacySql": False,
                 "priority": "BATCH",
             }
@@ -67,12 +66,11 @@ with DAG(
         task_id="gold_tables",
         configuration={
             "query": {
-                "query": read_sql_file(SQL_FILE_PATH_3),
+                "query": "{% include '/home/airflow/gcs/pipelines/transforms/gold.sql' %}",
                 "useLegacySql": False,
                 "priority": "BATCH",
             }
         },
     )
 
-# Define dependencies
-bronze_tables >> silver_tables >> gold_tables
+    bronze_tables >> silver_tables >> gold_tables
