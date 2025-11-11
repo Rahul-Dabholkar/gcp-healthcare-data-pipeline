@@ -15,6 +15,13 @@ REGION = "us-east1"
 CLUSTER_NAME = "cluster-7b55"
 COMPOSER_BUCKET = "us-central1-gcp-healthcare--9b63318a-bucket"
 
+GCS_JOB_FILE_0 = f"gs://{COMPOSER_BUCKET}/pipelines/ingestion/init_bq_tables.py"
+INITIALIZATION_JOB_0 = {
+    "reference": {"project_id": PROJECT_ID},
+    "placement": {"cluster_name": CLUSTER_NAME},
+    "pyspark_job": {"main_python_file_uri": GCS_JOB_FILE_0},
+}
+
 GCS_JOB_FILE_1 = f"gs://{COMPOSER_BUCKET}/pipelines/ingestion/hospitalA_mysqlToLanding.py"
 PYSPARK_JOB_1 = {
     "reference": {"project_id": PROJECT_ID},
@@ -73,6 +80,13 @@ with DAG(
         cluster_name=CLUSTER_NAME,
     )
 
+    initialization_task_0 = DataprocSubmitJobOperator(
+        task_id="initialization_task_0", 
+        job=INITIALIZATION_JOB_0, 
+        region=REGION, 
+        project_id=PROJECT_ID
+    )
+
     pyspark_task_1 = DataprocSubmitJobOperator(
         task_id="pyspark_task_1", 
         job=PYSPARK_JOB_1, 
@@ -109,4 +123,4 @@ with DAG(
     )
 
 # define the task dependencies
-start_cluster >> pyspark_task_1 >> pyspark_task_2 >> pyspark_task_3 >> pyspark_task_4 >> stop_cluster
+start_cluster >> initialization_task_0 >> pyspark_task_1 >> pyspark_task_2 >> pyspark_task_3 >> pyspark_task_4 >> stop_cluster
