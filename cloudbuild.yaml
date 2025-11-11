@@ -12,6 +12,7 @@ steps:
       - "--dags_directory=${_DAGS_DIRECTORY}"
       - "--dags_bucket=${_DAGS_BUCKET}"
       - "--data_directory=${_DATA_DIRECTORY}"
+      - "--pipelines_directory=${_PIPELINES_DIRECTORY}"
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -20,5 +21,6 @@ substitutions:
   _DAGS_DIRECTORY: "dags/"
   _DAGS_BUCKET: "us-central1-gcp-healthcare--9b63318a-bucket"
   _DATA_DIRECTORY: "data/"
+  _PIPELINES_DIRECTORY: "src/pipelines/"
 
 
