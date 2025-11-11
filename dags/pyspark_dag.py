@@ -15,28 +15,28 @@ REGION = "us-east1"
 CLUSTER_NAME = "cluster-7b55"
 COMPOSER_BUCKET = "us-central1-gcp-healthcare--9b63318a-bucket"
 
-GCS_JOB_FILE_1 = f"gs://{COMPOSER_BUCKET}/src/pipelines/ingestion/hospitalA_mysqlToLanding.py"
+GCS_JOB_FILE_1 = f"gs://{COMPOSER_BUCKET}/pipelines/ingestion/hospitalA_mysqlToLanding.py"
 PYSPARK_JOB_1 = {
     "reference": {"project_id": PROJECT_ID},
     "placement": {"cluster_name": CLUSTER_NAME},
     "pyspark_job": {"main_python_file_uri": GCS_JOB_FILE_1},
 }
 
-GCS_JOB_FILE_2 = f"gs://{COMPOSER_BUCKET}/src/pipelines/ingestion/hospitalB_mysqlToLanding.py"
+GCS_JOB_FILE_2 = f"gs://{COMPOSER_BUCKET}/pipelines/ingestion/hospitalB_mysqlToLanding.py"
 PYSPARK_JOB_2 = {
     "reference": {"project_id": PROJECT_ID},
     "placement": {"cluster_name": CLUSTER_NAME},
     "pyspark_job": {"main_python_file_uri": GCS_JOB_FILE_2},
 }
 
-GCS_JOB_FILE_3 = f"gs://{COMPOSER_BUCKET}/src/pipelines/ingestion/claims.py"
+GCS_JOB_FILE_3 = f"gs://{COMPOSER_BUCKET}/pipelines/ingestion/claims.py"
 PYSPARK_JOB_3 = {
     "reference": {"project_id": PROJECT_ID},
     "placement": {"cluster_name": CLUSTER_NAME},
     "pyspark_job": {"main_python_file_uri": GCS_JOB_FILE_3},
 }
 
-GCS_JOB_FILE_4 = f"gs://{COMPOSER_BUCKET}/src/pipelines/ingestion/cpt_codes.py"
+GCS_JOB_FILE_4 = f"gs://{COMPOSER_BUCKET}/pipelines/ingestion/cpt_codes.py"
 PYSPARK_JOB_4 = {
     "reference": {"project_id": PROJECT_ID},
     "placement": {"cluster_name": CLUSTER_NAME},
