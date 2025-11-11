@@ -1,7 +1,6 @@
 import airflow
 from airflow import DAG
-from datetime import timedelta
-from airflow.utils.dates import days_ago
+from datetime import timedelta, datetime
 from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
 
 # Define constants
@@ -11,19 +10,15 @@ SQL_FILE_PATH_1 = "/home/airflow/gcs/pipelines/loaders/bronze.sql"
 SQL_FILE_PATH_2 = "/home/airflow/gcs/pipelines/transforms/silver.sql"
 SQL_FILE_PATH_3 = "/home/airflow/gcs/pipelines/transforms/gold.sql"
 
-# Read SQL query from file
+# Helper to read SQL at runtime
 def read_sql_file(file_path):
     with open(file_path, "r") as file:
         return file.read()
 
-BRONZE_QUERY = read_sql_file(SQL_FILE_PATH_1)
-SILVER_QUERY = read_sql_file(SQL_FILE_PATH_2)
-GOLD_QUERY = read_sql_file(SQL_FILE_PATH_3)
-
-# Define default arguments
+# Default arguments
 ARGS = {
     "owner": "RAHUL DEV",
-    "start_date": None,
+    "start_date": datetime(2025, 1, 1),  # must be a valid date
     "depends_on_past": False,
     "email_on_failure": False,
     "email_on_retry": False,
@@ -37,8 +32,9 @@ ARGS = {
 with DAG(
     dag_id="bigquery_dag",
     schedule_interval=None,
-    description="DAG to run the bigquery jobs",
+    description="DAG to run the BigQuery jobs",
     default_args=ARGS,
+    catchup=False,
     tags=["gcs", "bq", "etl"]
 ) as dag:
 
@@ -47,7 +43,7 @@ with DAG(
         task_id="bronze_tables",
         configuration={
             "query": {
-                "query": BRONZE_QUERY,
+                "query": read_sql_file(SQL_FILE_PATH_1),  # Read at runtime
                 "useLegacySql": False,
                 "priority": "BATCH",
             }
@@ -59,7 +55,7 @@ with DAG(
         task_id="silver_tables",
         configuration={
             "query": {
-                "query": SILVER_QUERY,
+                "query": read_sql_file(SQL_FILE_PATH_2),
                 "useLegacySql": False,
                 "priority": "BATCH",
             }
@@ -71,7 +67,7 @@ with DAG(
         task_id="gold_tables",
         configuration={
             "query": {
-                "query": GOLD_QUERY,
+                "query": read_sql_file(SQL_FILE_PATH_3),
                 "useLegacySql": False,
                 "priority": "BATCH",
             }
