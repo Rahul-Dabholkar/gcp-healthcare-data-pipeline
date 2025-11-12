@@ -1,76 +1,96 @@
 from airflow import DAG
-from datetime import timedelta, datetime
 from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
+from airflow.providers.google.cloud.hooks.gcs import GCSHook
+from datetime import datetime, timedelta
+import logging
 
-# Define constants
 PROJECT_ID = "gcp-healthcare-etl-2025"
 LOCATION = "US"
-SQL_FILE_PATH_1 = "/home/airflow/gcs/pipelines/loaders/bronze.sql"
-SQL_FILE_PATH_2 = "/home/airflow/gcs/pipelines/transforms/silver.sql"
-SQL_FILE_PATH_3 = "/home/airflow/gcs/pipelines/transforms/gold.sql"
+BUCKET_NAME = "us-central1-gcp-healthcare--832ad756-bucket"
 
-# Helper to read SQL at runtime
-def read_sql_file(file_path):
-    with open(file_path, "r") as file:
-        return file.read()
-
-# Default arguments
-ARGS = {
-    "owner": "RAHUL DEV",
-    "start_date": None,
-    "depends_on_past": False,
-    "email_on_failure": False,
-    "email_on_retry": False,
-    "email": ["rahultbeast@gmail.com"],
-    "email_on_success": False,
-    "retries": 1,
-    "retry_delay": timedelta(minutes=5),
+# Paths inside the bucket
+SQL_PATHS = {
+    "bronze": "pipelines/loaders/bronze.sql",
+    "silver": "pipelines/transforms/silver.sql",
+    "gold": "pipelines/transforms/gold.sql",
 }
 
-# Define the DAG
+
+def read_sql_from_gcs(file_path: str) -> str:
+    """Read SQL file content directly from GCS with logging."""
+    hook = GCSHook()
+    logging.info(f"📥 Reading SQL file from GCS: gs://{BUCKET_NAME}/{file_path}")
+    try:
+        content = hook.download(bucket_name=BUCKET_NAME, object_name=file_path).decode("utf-8")
+        logging.info(f"✅ Successfully read SQL file: {file_path}")
+        logging.debug(f"SQL Preview ({file_path}):\n{content[:400]}...")
+        return content
+    except Exception as e:
+        logging.error(f"❌ Error reading SQL from GCS ({file_path}): {e}", exc_info=True)
+        raise
+
+
+default_args = {
+    "owner": "RAHUL DEV",
+    "depends_on_past": False,
+    "email": ["rahultbeast@gmail.com"],
+    "email_on_failure": True,
+    "email_on_retry": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
+    "start_date": datetime(2025, 11, 1),
+}
+
 with DAG(
-    dag_id="bigquery_dag",
+    dag_id="bigquery_dag_v3",
+    description="Run staged SQL transformations (bronze → silver → gold) in BigQuery",
     schedule_interval=None,
-    description="DAG to run the BigQuery jobs",
-    default_args=ARGS,
+    default_args=default_args,
     catchup=False,
-    tags=["gcs", "bq", "etl"]
+    tags=["bq", "gcs", "composer"],
 ) as dag:
 
-    # Task to create bronze table
-    bronze_tables = BigQueryInsertJobOperator(
-        task_id="bronze_tables",
+    bronze_sql = read_sql_from_gcs(SQL_PATHS["bronze"])
+    silver_sql = read_sql_from_gcs(SQL_PATHS["silver"])
+    gold_sql = read_sql_from_gcs(SQL_PATHS["gold"])
+
+    bronze_task = BigQueryInsertJobOperator(
+        task_id="run_bronze_sql",
         configuration={
             "query": {
-                "query": "{% include '/home/airflow/gcs/pipelines/loaders/bronze.sql' %}",
+                "query": bronze_sql,
                 "useLegacySql": False,
                 "priority": "BATCH",
             }
         },
+        location=LOCATION,
+        project_id=PROJECT_ID,
     )
 
-    # Task to create silver table
-    silver_tables = BigQueryInsertJobOperator(
-        task_id="silver_tables",
+    silver_task = BigQueryInsertJobOperator(
+        task_id="run_silver_sql",
         configuration={
             "query": {
-                "query": "{% include '/home/airflow/gcs/pipelines/transforms/silver.sql' %}",
+                "query": silver_sql,
                 "useLegacySql": False,
                 "priority": "BATCH",
             }
         },
+        location=LOCATION,
+        project_id=PROJECT_ID,
     )
 
-    # Task to create gold table
-    gold_tables = BigQueryInsertJobOperator(
-        task_id="gold_tables",
+    gold_task = BigQueryInsertJobOperator(
+        task_id="run_gold_sql",
         configuration={
             "query": {
-                "query": "{% include '/home/airflow/gcs/pipelines/transforms/gold.sql' %}",
+                "query": gold_sql,
                 "useLegacySql": False,
                 "priority": "BATCH",
             }
         },
+        location=LOCATION,
+        project_id=PROJECT_ID,
     )
 
-    bronze_tables >> silver_tables >> gold_tables
+    bronze_task >> silver_task >> gold_task
