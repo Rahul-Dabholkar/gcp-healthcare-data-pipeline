@@ -1,6 +1,8 @@
--- IN THIS WE WE WILL IMPLEMENTING BOTH SCD2 AND CDM LOGIC FOR THE SILVER TABLES
+-- FULL corrected silver SQL (types normalized & merges fixed)
 
--- 1. Create table departments by Merge Data from Hospital A & B  
+-- --------------------------------------------------------------------------------
+-- Departments (unchanged)
+-- --------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.departments` (
     Dept_Id STRING,
     SRC_Dept_Id STRING,
@@ -9,11 +11,8 @@ CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.departments` 
     is_quarantined BOOLEAN
 );
 
-
--- 2. Truncate Silver Table Before Inserting 
 TRUNCATE TABLE `gcp-healthcare-etl-2025.silver_dataset.departments`;
 
--- 3. full load by Inserting merged Data 
 INSERT INTO `gcp-healthcare-etl-2025.silver_dataset.departments`
 SELECT DISTINCT 
     CONCAT(deptid, '-', datasource) AS Dept_Id,
@@ -30,9 +29,9 @@ FROM (
     SELECT DISTINCT *, 'hosb' AS datasource FROM `gcp-healthcare-etl-2025.bronze_dataset.departments_hb`
 );
 
--------------------------------------------------------------------------------------------------------
-
--- 1. Create table providers by Merge Data from Hospital A & B  
+-- --------------------------------------------------------------------------------
+-- Providers (unchanged except safe cast for NPI)
+-- --------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.providers` (
     ProviderID STRING,
     FirstName STRING,
@@ -44,10 +43,8 @@ CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.providers` (
     is_quarantined BOOLEAN
 );
 
--- 2. Truncate Silver Table Before Inserting 
 TRUNCATE TABLE `gcp-healthcare-etl-2025.silver_dataset.providers`;
 
--- 3. full load by Inserting merged Data 
 INSERT INTO `gcp-healthcare-etl-2025.silver_dataset.providers`
 SELECT DISTINCT 
     ProviderID,
@@ -55,7 +52,7 @@ SELECT DISTINCT
     LastName,
     Specialization,
     DeptID,
-    CAST(NPI AS INT64) AS NPI,
+    SAFE_CAST(NPI AS INT64) AS NPI,
     datasource,
     CASE 
         WHEN ProviderID IS NULL OR DeptID IS NULL THEN TRUE 
@@ -67,9 +64,9 @@ FROM (
     SELECT DISTINCT *, 'hosb' AS datasource FROM `gcp-healthcare-etl-2025.bronze_dataset.providers_hb`
 );
 
--------------------------------------------------------------------------------------------------------
-
--- 1. Create patients Table in BigQuery
+-- --------------------------------------------------------------------------------
+-- Patients (DOB & SRC_ModifiedDate are TIMESTAMP)
+-- --------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.patients` (
     Patient_Key STRING,
     SRC_PatientID STRING,
@@ -79,9 +76,9 @@ CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.patients` (
     SSN STRING,
     PhoneNumber STRING,
     Gender STRING,
-    DOB INT64,
+    DOB TIMESTAMP,
     Address STRING,
-    SRC_ModifiedDate INT64,
+    SRC_ModifiedDate TIMESTAMP,
     datasource STRING,
     is_quarantined BOOL,
     inserted_date TIMESTAMP,
@@ -89,7 +86,7 @@ CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.patients` (
     is_current BOOL
 );
 
---Create a quality_checks temp table
+-- Build normalized quality_checks for patients (cast DOB/ModifiedDate to TIMESTAMP)
 CREATE OR REPLACE TABLE `gcp-healthcare-etl-2025.silver_dataset.quality_checks` AS
 SELECT DISTINCT 
     CONCAT(SRC_PatientID, '-', datasource) AS Patient_Key,
@@ -100,9 +97,10 @@ SELECT DISTINCT
     SSN,
     PhoneNumber,
     Gender,
-    DOB,
+    -- Ensure DOB is TIMESTAMP (attempt cast if necessary)
+    CAST(DOB AS TIMESTAMP) AS DOB,
     Address,
-    ModifiedDate AS SRC_ModifiedDate,
+    CAST(ModifiedDate AS TIMESTAMP) AS SRC_ModifiedDate,
     datasource,
     CASE 
         WHEN SRC_PatientID IS NULL OR DOB IS NULL OR FirstName IS NULL OR LOWER(FirstName) = 'null' THEN TRUE
@@ -140,13 +138,11 @@ FROM (
     FROM `gcp-healthcare-etl-2025.bronze_dataset.patients_hb`
 );
 
--- 3. Apply SCD Type 2 Logic with MERGE
+-- Apply SCD2 merge (types now align)
 MERGE INTO `gcp-healthcare-etl-2025.silver_dataset.patients` AS target
 USING `gcp-healthcare-etl-2025.silver_dataset.quality_checks` AS source
 ON target.Patient_Key = source.Patient_Key
 AND target.is_current = TRUE 
-
--- Step 1: Mark existing records as historical if any column has changed
 WHEN MATCHED AND (
     target.SRC_PatientID <> source.SRC_PatientID OR
     target.FirstName <> source.FirstName OR
@@ -164,8 +160,6 @@ WHEN MATCHED AND (
 THEN UPDATE SET 
     target.is_current = FALSE,
     target.modified_date = CURRENT_TIMESTAMP()
-
--- Step 2: Insert new and updated records as the latest active records
 WHEN NOT MATCHED 
 THEN INSERT (
     Patient_Key,
@@ -204,12 +198,12 @@ VALUES (
     TRUE 
 );
 
--- DROP quality_check table
 DROP TABLE IF EXISTS `gcp-healthcare-etl-2025.silver_dataset.quality_checks`;
 
--------------------------------------------------------------------------------------------------------
-
--- 1. Create transactions Table in BigQuery
+-- --------------------------------------------------------------------------------
+-- Transactions
+--   -> changed VisitDate/ServiceDate/PaidDate and SRC_InsertDate/SRC_ModifiedDate to TIMESTAMP
+-- --------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.transactions` (
     Transaction_Key STRING,
     SRC_TransactionID STRING,
@@ -217,9 +211,9 @@ CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.transactions`
     PatientID STRING,
     ProviderID STRING,
     DeptID STRING,
-    VisitDate INT64,
-    ServiceDate INT64,
-    PaidDate INT64,
+    VisitDate TIMESTAMP,
+    ServiceDate TIMESTAMP,
+    PaidDate TIMESTAMP,
     VisitType STRING,
     Amount FLOAT64,
     AmountType STRING,
@@ -231,8 +225,8 @@ CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.transactions`
     LineOfBusiness STRING,
     MedicaidID STRING,
     MedicareID STRING,
-    SRC_InsertDate INT64,
-    SRC_ModifiedDate INT64,
+    SRC_InsertDate TIMESTAMP,
+    SRC_ModifiedDate TIMESTAMP,
     datasource STRING,
     is_quarantined BOOL,
     inserted_date TIMESTAMP,
@@ -240,7 +234,7 @@ CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.transactions`
     is_current BOOL
 );
 
--- 2. Create a quality_checks temp table
+-- Create normalized quality_checks for transactions (cast date fields to TIMESTAMP, amounts to FLOAT)
 CREATE OR REPLACE TABLE `gcp-healthcare-etl-2025.silver_dataset.quality_checks` AS
 SELECT DISTINCT 
     CONCAT(TransactionID, '-', datasource) AS Transaction_Key,
@@ -249,13 +243,13 @@ SELECT DISTINCT
     PatientID,
     ProviderID,
     DeptID,
-    VisitDate,
-    ServiceDate,
-    PaidDate,
+    CAST(VisitDate AS TIMESTAMP) AS VisitDate,
+    CAST(ServiceDate AS TIMESTAMP) AS ServiceDate,
+    CAST(PaidDate AS TIMESTAMP) AS PaidDate,
     VisitType,
-    Amount,
+    SAFE_CAST(Amount AS FLOAT64) AS Amount,
     AmountType,
-    PaidAmount,
+    SAFE_CAST(PaidAmount AS FLOAT64) AS PaidAmount,
     ClaimID,
     PayorID,
     ProcedureCode,
@@ -263,8 +257,8 @@ SELECT DISTINCT
     LineOfBusiness,
     MedicaidID,
     MedicareID,
-    InsertDate AS SRC_InsertDate,
-    ModifiedDate AS SRC_ModifiedDate,
+    CAST(InsertDate AS TIMESTAMP) AS SRC_InsertDate,
+    CAST(ModifiedDate AS TIMESTAMP) AS SRC_ModifiedDate,
     datasource,
     CASE 
         WHEN EncounterID IS NULL OR PatientID IS NULL OR TransactionID IS NULL OR VisitDate IS NULL THEN TRUE
@@ -276,13 +270,10 @@ FROM (
     SELECT DISTINCT *, 'hosb' AS datasource FROM `gcp-healthcare-etl-2025.bronze_dataset.transactions_hb`
 );
 
--- 3. Apply SCD Type 2 Logic with MERGE
 MERGE INTO `gcp-healthcare-etl-2025.silver_dataset.transactions` AS target
 USING `gcp-healthcare-etl-2025.silver_dataset.quality_checks` AS source
 ON target.Transaction_Key = source.Transaction_Key
 AND target.is_current = TRUE 
-
--- Step 1: Mark existing records as historical if any column has changed
 WHEN MATCHED AND (
     target.SRC_TransactionID <> source.SRC_TransactionID OR
     target.EncounterID <> source.EncounterID OR
@@ -311,8 +302,6 @@ WHEN MATCHED AND (
 THEN UPDATE SET 
     target.is_current = FALSE,
     target.modified_date = CURRENT_TIMESTAMP()
-
--- Step 2: Insert new and updated records as the latest active records
 WHEN NOT MATCHED 
 THEN INSERT (
     Transaction_Key,
@@ -373,22 +362,21 @@ VALUES (
     TRUE 
 );
 
--- 4. DROP quality_check table
 DROP TABLE IF EXISTS `gcp-healthcare-etl-2025.silver_dataset.quality_checks`;
 
--------------------------------------------------------------------------------------------------------
-
--- 1. Create the encounters Table in BigQuery
+-- --------------------------------------------------------------------------------
+-- Encounters (make EncounterDate & SRC_ModifiedDate TIMESTAMP)
+-- --------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.encounters` (
     Encounter_Key STRING,
     SRC_EncounterID STRING,
     PatientID STRING,
     ProviderID STRING,
     DepartmentID STRING,
-    EncounterDate INT64,
+    EncounterDate TIMESTAMP,
     EncounterType STRING,
     ProcedureCode INT64,
-    SRC_ModifiedDate INT64,
+    SRC_ModifiedDate TIMESTAMP,
     datasource STRING,
     is_quarantined BOOL,
     inserted_date TIMESTAMP,
@@ -396,7 +384,6 @@ CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.encounters` (
     is_current BOOL
 );
 
--- 2. Create a quality_checks temp table for encounters
 CREATE OR REPLACE TABLE `gcp-healthcare-etl-2025.silver_dataset.quality_checks_encounters` AS
 SELECT DISTINCT 
     CONCAT(SRC_EncounterID, '-', datasource) AS Encounter_Key,
@@ -404,10 +391,10 @@ SELECT DISTINCT
     PatientID,
     ProviderID,
     DepartmentID,
-    EncounterDate,
+    CAST(EncounterDate AS TIMESTAMP) AS EncounterDate,
     EncounterType,
     ProcedureCode,
-    ModifiedDate AS SRC_ModifiedDate,
+    CAST(ModifiedDate AS TIMESTAMP) AS SRC_ModifiedDate,
     datasource,
     CASE 
         WHEN SRC_EncounterID IS NULL OR PatientID IS NULL OR EncounterDate IS NULL OR LOWER(EncounterType) = 'null' THEN TRUE
@@ -441,13 +428,10 @@ FROM (
     FROM `gcp-healthcare-etl-2025.bronze_dataset.encounters_hb`
 );
 
--- 3. Apply SCD Type 2 Logic with MERGE
 MERGE INTO `gcp-healthcare-etl-2025.silver_dataset.encounters` AS target
 USING `gcp-healthcare-etl-2025.silver_dataset.quality_checks_encounters` AS source
 ON target.Encounter_Key = source.Encounter_Key
 AND target.is_current = TRUE 
-
--- Step 1: Mark existing records as historical if any column has changed
 WHEN MATCHED AND (
     target.SRC_EncounterID <> source.SRC_EncounterID OR
     target.PatientID <> source.PatientID OR
@@ -463,8 +447,6 @@ WHEN MATCHED AND (
 THEN UPDATE SET 
     target.is_current = FALSE,
     target.modified_date = CURRENT_TIMESTAMP()
-
--- Step 2: Insert new and updated records as the latest active records
 WHEN NOT MATCHED 
 THEN INSERT (
     Encounter_Key,
@@ -499,12 +481,13 @@ VALUES (
     TRUE 
 );
 
--- 4. DROP quality_check table
 DROP TABLE IF EXISTS `gcp-healthcare-etl-2025.silver_dataset.quality_checks_encounters`;
 
--------------------------------------------------------------------------------------------------------
-
--- 1. Create the Claims Table in BigQuery
+-- --------------------------------------------------------------------------------
+-- Claims
+--   -> convert monetary strings to FLOAT64 (SAFE_CAST)
+--   -> timestamps normalized to TIMESTAMP
+-- --------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.claims` (
     Claim_Key STRING,
     SRC_ClaimID STRING,
@@ -513,18 +496,18 @@ CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.claims` (
     EncounterID STRING,
     ProviderID STRING,
     DeptID STRING,
-    ServiceDate STRING,
-    ClaimDate STRING,
+    ServiceDate TIMESTAMP,
+    ClaimDate TIMESTAMP,
     PayorID STRING,
-    ClaimAmount STRING,
-    PaidAmount STRING,
+    ClaimAmount FLOAT64,
+    PaidAmount FLOAT64,
     ClaimStatus STRING,
     PayorType STRING,
-    Deductible STRING,
-    Coinsurance STRING,
-    Copay STRING,
-    SRC_InsertDate STRING,
-    SRC_ModifiedDate STRING,
+    Deductible FLOAT64,
+    Coinsurance FLOAT64,
+    Copay FLOAT64,
+    SRC_InsertDate TIMESTAMP,
+    SRC_ModifiedDate TIMESTAMP,
     datasource STRING,
     is_quarantined BOOLEAN,
     inserted_date TIMESTAMP,
@@ -532,7 +515,6 @@ CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.claims` (
     is_current BOOLEAN
 );
 
--- 2. Create a quality_checks temp table for claims
 CREATE OR REPLACE TABLE `gcp-healthcare-etl-2025.silver_dataset.quality_checks_claims` AS
 SELECT 
     CONCAT(SRC_ClaimID, '-', datasource) AS Claim_Key,
@@ -542,18 +524,18 @@ SELECT
     EncounterID,
     ProviderID,
     DeptID,
-    ServiceDate,
-    ClaimDate,
+    CAST(ServiceDate AS TIMESTAMP) AS ServiceDate,
+    CAST(ClaimDate AS TIMESTAMP) AS ClaimDate,
     PayorID,
-    ClaimAmount,
-    PaidAmount,
+    SAFE_CAST(ClaimAmount AS FLOAT64) AS ClaimAmount,
+    SAFE_CAST(PaidAmount AS FLOAT64) AS PaidAmount,
     ClaimStatus,
     PayorType,
-    Deductible,
-    Coinsurance,
-    Copay,
-    InsertDate AS SRC_InsertDate,
-    ModifiedDate AS SRC_ModifiedDate,
+    SAFE_CAST(Deductible AS FLOAT64) AS Deductible,
+    SAFE_CAST(Coinsurance AS FLOAT64) AS Coinsurance,
+    SAFE_CAST(Copay AS FLOAT64) AS Copay,
+    CAST(InsertDate AS TIMESTAMP) AS SRC_InsertDate,
+    CAST(ModifiedDate AS TIMESTAMP) AS SRC_ModifiedDate,
     datasource,
     CASE 
         WHEN SRC_ClaimID IS NULL OR PatientID IS NULL OR TransactionID IS NULL OR LOWER(ClaimStatus) = 'null' THEN TRUE
@@ -583,13 +565,10 @@ FROM (
     FROM `gcp-healthcare-etl-2025.bronze_dataset.claims`
 );
 
--- 3. Apply SCD Type 2 Logic with MERGE
 MERGE INTO `gcp-healthcare-etl-2025.silver_dataset.claims` AS target
 USING `gcp-healthcare-etl-2025.silver_dataset.quality_checks_claims` AS source
 ON target.Claim_Key = source.Claim_Key
 AND target.is_current = TRUE 
-
--- Step 1: Mark existing records as historical if any column has changed
 WHEN MATCHED AND (
     target.SRC_ClaimID <> source.SRC_ClaimID OR
     target.TransactionID <> source.TransactionID OR
@@ -614,8 +593,6 @@ WHEN MATCHED AND (
 THEN UPDATE SET 
     target.is_current = FALSE,
     target.modified_date = CURRENT_TIMESTAMP()
-
--- Step 2: Insert new and updated records as the latest active records
 WHEN NOT MATCHED 
 THEN INSERT (
     Claim_Key,
@@ -670,12 +647,11 @@ VALUES (
     TRUE 
 );
 
--- 4. DROP quality_check table
 DROP TABLE IF EXISTS `gcp-healthcare-etl-2025.silver_dataset.quality_checks_claims`;
 
--------------------------------------------------------------------------------------------------------
-
--- 1. Create the CP Codes Silver Table in BigQuery
+-- --------------------------------------------------------------------------------
+-- CPT Codes (unchanged)
+-- --------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.cpt_codes` (
     CP_Code_Key STRING,
     procedure_code_category STRING,
@@ -689,7 +665,6 @@ CREATE TABLE IF NOT EXISTS `gcp-healthcare-etl-2025.silver_dataset.cpt_codes` (
     is_current BOOLEAN
 );
 
--- 2. Create a quality_checks temp table for CP Codes
 CREATE OR REPLACE TABLE `gcp-healthcare-etl-2025.silver_dataset.quality_checks_cpt_codes` AS
 SELECT 
     CONCAT(cpt_codes, '-', datasource) AS CP_Code_Key,
@@ -698,7 +673,6 @@ SELECT
     procedure_code_descriptions,
     code_status,
     datasource,
-    -- Define a quarantine condition (null values in key fields)
     CASE 
         WHEN cpt_codes IS NULL OR LOWER(code_status) = 'null' THEN TRUE
         ELSE FALSE
@@ -713,13 +687,10 @@ FROM (
     FROM `gcp-healthcare-etl-2025.bronze_dataset.cpt_codes`
 );
 
--- 3. Apply SCD Type 2 Logic with MERGE
 MERGE INTO `gcp-healthcare-etl-2025.silver_dataset.cpt_codes` AS target
 USING `gcp-healthcare-etl-2025.silver_dataset.quality_checks_cpt_codes` AS source
 ON target.CP_Code_Key = source.CP_Code_Key
 AND target.is_current = TRUE 
-
--- Step 1: Mark existing records as historical if any column has changed
 WHEN MATCHED AND (
     target.procedure_code_category <> source.procedure_code_category OR
     target.cpt_codes <> source.cpt_codes OR
@@ -731,8 +702,6 @@ WHEN MATCHED AND (
 THEN UPDATE SET 
     target.is_current = FALSE,
     target.modified_date = CURRENT_TIMESTAMP()
-
--- Step 2: Insert new and updated records as the latest active records
 WHEN NOT MATCHED 
 THEN INSERT (
     CP_Code_Key,
@@ -759,6 +728,4 @@ VALUES (
     TRUE 
 );
 
--- 4. DROP quality_check table
 DROP TABLE IF EXISTS `gcp-healthcare-etl-2025.silver_dataset.quality_checks_cpt_codes`;
- 
