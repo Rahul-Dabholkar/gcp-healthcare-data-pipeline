@@ -42,7 +42,7 @@ default_args = {
 }
 
 with DAG(
-    dag_id="bigquery_dag_v3",
+    dag_id="bigquery_dag",
     description="Run staged SQL transformations (bronze → silver → gold) in BigQuery",
     schedule_interval=None,
     default_args=default_args,
