@@ -13,7 +13,7 @@ from airflow.providers.google.cloud.operators.dataproc import (
 PROJECT_ID = "gcp-healthcare-etl-2025"
 REGION = "us-east1"
 CLUSTER_NAME = "cluster-7b55"
-COMPOSER_BUCKET = " us-central1-gcp-healthcare--e353934f-bucket"
+COMPOSER_BUCKET = "us-central1-gcp-healthcare--e353934f-bucket"
 
 GCS_JOB_FILE_0 = f"gs://{COMPOSER_BUCKET}/pipelines/ingestion/init_bq_tables.py"
 INITIALIZATION_JOB_0 = {

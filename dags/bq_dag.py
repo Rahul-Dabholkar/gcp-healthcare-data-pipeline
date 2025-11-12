@@ -6,7 +6,7 @@ import logging
 
 PROJECT_ID = "gcp-healthcare-etl-2025"
 LOCATION = "US"
-BUCKET_NAME = " us-central1-gcp-healthcare--e353934f-bucket"
+BUCKET_NAME = "us-central1-gcp-healthcare--e353934f-bucket"
 
 # Paths inside the bucket
 SQL_PATHS = {
