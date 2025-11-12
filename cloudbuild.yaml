@@ -19,7 +19,7 @@ options:
 
 substitutions:
   _DAGS_DIRECTORY: "dags/"
-  _DAGS_BUCKET: "us-central1-gcp-healthcare--9b63318a-bucket"
+  _DAGS_BUCKET: "us-central1-gcp-healthcare--832ad756-bucket"
   _DATA_DIRECTORY: "data/"
   _PIPELINES_DIRECTORY: "src/pipelines/"
 
