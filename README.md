@@ -43,6 +43,8 @@ A GCP-based data engineering solution for managing the financial aspects of heal
 
 ## 🏗️ Architecture
 
+![Airflow Dag](https://github.com/Rahul-Dabholkar/gcp-healthcare-data-pipeline/blob/main/docs/dag_diagram.png)
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Data Sources (Multi-tenant)               │
@@ -89,6 +91,7 @@ A GCP-based data engineering solution for managing the financial aspects of heal
 │ • KPI metrics: claim denial rates, payment cycles, etc.     │
 └─────────────────────────────────────────────────────────────┘
 ```
+![Pipeline Diagram](https://github.com/Rahul-Dabholkar/gcp-healthcare-data-pipeline/blob/main/docs/pipeline_diagram.png)
 
 ---
 
